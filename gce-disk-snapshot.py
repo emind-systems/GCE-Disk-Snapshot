@@ -59,7 +59,7 @@ def cleanup_old_snapshots(snap_name):
   # gcloud compute snapshots list -r ^prod-1-media-content-1a.* --uri
   write_log('Performing cleanup ...')
   try:
-    result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '.*', '--uri')
+    result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--uri')
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
     write_log(last_error,syslog.LOG_ERR)
