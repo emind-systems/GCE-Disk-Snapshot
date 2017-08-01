@@ -38,7 +38,7 @@ status_filename=''
 last_error='Successful execution.'
 
 # SHELL commands
-gcloud = sh.Command('/usr/local/bin/gcloud')
+gcloud = sh.Command('gcloud', ['/usr/bin','/usr/local/bin'])
 
 # CONSTANTS
 RESULT_OK = 0
