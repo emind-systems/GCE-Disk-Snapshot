@@ -66,7 +66,10 @@ def cleanup_old_snapshots(snap_name):
   # gcloud compute snapshots list -r ^prod-1-media-content-1a.* --uri
   write_log('Performing cleanup ...')
   try:
-    result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--filter=labels.snaptype=' + snapshot_label, '--uri')
+    if can_add_label():
+      result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--filter=labels.snaptype=' + snapshot_label, '--uri')
+    else:
+      result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--uri')
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
     write_log(last_error,syslog.LOG_ERR)
@@ -145,7 +148,7 @@ historic_snapshots = args['history']
 status_dir = args['statdir']
 status_filename = status_dir+'/'+disk_name+'.status'
 
-if args['label']:
+if args['label'] != snapshot_label:
   if can_add_label():
     snapshot_label = args['label']
   else:
