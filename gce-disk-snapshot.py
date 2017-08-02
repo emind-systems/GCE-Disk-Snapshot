@@ -20,6 +20,7 @@ import time
 import syslog
 import argparse
 import subprocess
+from distutils.version import LooseVersion
 
 # GLOBAL VARIABLES
 
@@ -45,6 +46,11 @@ gcloud = sh.Command('gcloud', ['/usr/bin','/usr/local/bin'])
 RESULT_OK = 0
 RESULT_ERR = 1
 
+def can_add_label():
+    versions = gcloud('--version').split('\n')
+    version = filter(lambda x: 'Google Cloud SDK' in x, versions)[0].split(' ')[-1]
+    return LooseVersion('160.0.0') <= LooseVersion(version)
+
 def set_last_error(error_msg):
   global last_error
   last_error = error_msg
@@ -60,7 +66,7 @@ def cleanup_old_snapshots(snap_name):
   # gcloud compute snapshots list -r ^prod-1-media-content-1a.* --uri
   write_log('Performing cleanup ...')
   try:
-    result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--filter=labels.type=' + snapshot_label, '--uri')
+    result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--filter=labels.snaptype=' + snapshot_label, '--uri')
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
     write_log(last_error,syslog.LOG_ERR)
@@ -88,7 +94,8 @@ def create_snapshot(disk_name,gc_zone):
   snapshot_name = disk_name + '-' + time.strftime('%Y%m%d-%H%M')
   try:
     result = gcloud('compute', 'disks', 'snapshot', disk_name, '--snapshot-names', snapshot_name, '--zone', gc_zone)
-    result = gcloud('compute', 'snapshots', 'add-labels', snapshot_name, '--labels=type=' + snapshot_label)
+    if can_add_label():
+      result = gcloud('compute', 'snapshots', 'add-labels', snapshot_name, '--labels=snaptype=' + snapshot_label)
     write_log('Snapshot created: ' + snapshot_name)
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
@@ -135,9 +142,15 @@ args = vars(parser.parse_args())
 disk_name = args['disk']
 gce_zone = args['zone']
 historic_snapshots = args['history']
-snapshot_label = args['label']
 status_dir = args['statdir']
 status_filename = status_dir+'/'+disk_name+'.status'
+
+if args['label']:
+  if can_add_label():
+    snapshot_label = args['label']
+  else:
+    msg = "Cannot add snapshot label. Google Cloud SDK version must be >= 160.0.0."
+    sys.exit(msg)
 
 # Check status directory
 try:
