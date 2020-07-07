@@ -9,6 +9,7 @@
 #   -h, --help                         show this help message and exit
 #   -d DISK, --disk DISK               Disk name
 #   -z ZONE, --zone ZONE               The GCE zone of the disk to be imaged
+#   -c CYCLE, --cycle CYCLE            The frequency of the snapshot cycle (ex: hourly, daily, weekly, monthly)
 #   -H HISTORY, --history HISTORY      Number of historic snapshots to keep
 #   -s STATDIR, --statdir STATDIR      Directory where to write the status file
 #
@@ -32,13 +33,14 @@ script_path = os.path.dirname(script)
 # Generic variables
 disk_name=''
 gce_zone=''
+cycle_name=''
 historic_snapshots=30
 status_dir='/var/run/emind/gce-ds'
 status_filename=''
 last_error='Successful execution.'
 
 # SHELL commands
-gcloud = sh.Command('/usr/local/bin/gcloud')
+gcloud = sh.Command('gcloud', ['/usr/bin','/usr/local/bin'])
 
 # CONSTANTS
 RESULT_OK = 0
@@ -55,11 +57,14 @@ def write_log(msg,msg_type=syslog.LOG_INFO):
   except Exception as ex:
     print 'Logging exception: %s' % ex
 
-def cleanup_old_snapshots(snap_name):
+def cleanup_old_snapshots(snap_name,cycle_name):
   # gcloud compute snapshots list -r ^prod-1-media-content-1a.* --uri
   write_log('Performing cleanup ...')
   try:
-    result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--uri')
+    if cycle_name is None:
+      result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--uri')
+    else:
+      result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-' + cycle_name + '-[0-9]{6}.*', '--uri')
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
     write_log(last_error,syslog.LOG_ERR)
@@ -82,9 +87,13 @@ def cleanup_old_snapshots(snap_name):
   return RESULT_OK
   # print snapshot_list
 
-def create_snapshot(disk_name,gc_zone):
-  write_log('Creating snapshot for disk "'+disk_name+'" ...')
-  snapshot_name = disk_name + '-' + time.strftime('%Y%m%d-%H%M')
+def create_snapshot(disk_name,cycle_name,gc_zone):
+  if cycle_name is None:
+    write_log('Creating snapshot for disk "'+disk_name+'" ...')
+    snapshot_name = disk_name + '-' + time.strftime('%Y%m%d-%H%M')
+  else:
+    write_log('Creating '+cycle_name+' snapshot for disk "'+disk_name+'" ...')
+    snapshot_name = disk_name + '-' + cycle_name + '-' + time.strftime('%Y%m%d-%H%M')
   try:
     result = gcloud('compute', 'disks', 'snapshot', disk_name, '--snapshot-names', snapshot_name, '--zone', gc_zone)
     write_log('Snapshot created: ' + snapshot_name)
@@ -124,6 +133,7 @@ def save_status_file(filename, status):
 parser = argparse.ArgumentParser(description='GCE Disk Snapshot Maker')
 parser.add_argument('-d', '--disk', help='Disk name', required=True)
 parser.add_argument('-z', '--zone', help='The GCE zone of the disk to be imaged', required=True)
+parser.add_argument('-c', '--cycle', help='The frequency of the snapshot cycle (ex: hourly, daily, weekly, monthly)', required=False)
 parser.add_argument('-H', '--history', help='Number of historic snapshots to keep', required=False, default=historic_snapshots, type=int)
 parser.add_argument('-s', '--statdir', help='Directory where to write the status file', required=False, default=status_dir)
 
@@ -131,6 +141,7 @@ args = vars(parser.parse_args())
 
 disk_name = args['disk']
 gce_zone = args['zone']
+cycle_name = args['cycle']
 historic_snapshots = args['history']
 status_dir = args['statdir']
 status_filename = status_dir+'/'+disk_name+'.status'
@@ -151,9 +162,9 @@ if gce_zone not in available_zones:
   save_status_file(status_filename,RESULT_ERR)
   sys.exit(RESULT_ERR)
 
-result = create_snapshot(disk_name, gce_zone)
+result = create_snapshot(disk_name,cycle_name,gce_zone)
 if result == RESULT_OK:
-  result = cleanup_old_snapshots(disk_name)
+  result = cleanup_old_snapshots(disk_name,cycle_name)
 
 save_status_file(status_filename,result)
 
