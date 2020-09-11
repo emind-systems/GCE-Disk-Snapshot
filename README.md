@@ -4,16 +4,19 @@ GCE-Disk-Snapshot
  Usage:
 --------
 
-gce-disk-snapshot.py [-h] -d DISK -z ZONE [-H HISTORY] [-s STATDIR]
+`gce-disk-snapshot.py [-h] -d DISK -z ZONE [-H HISTORY] [-s STATDIR]`
 
 GCE Disk Snapshot Maker
 
+```
 optional arguments:
   -h, --help                         show this help message and exit
   -d DISK, --disk DISK               Disk name
   -z ZONE, --zone ZONE               The GCE zone of the disk to be imaged
+  -c CYCLE, --cycle CYCLE            The arbitary name of your snapshot cycle (ex: hourly, daily, weekly, monthly)
   -H HISTORY, --history HISTORY      Number of historic snapshots to keep
   -s STATDIR, --statdir STATDIR      Directory where to write the status file
+```
 
 License
 -------
