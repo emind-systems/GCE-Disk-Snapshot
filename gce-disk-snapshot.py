@@ -95,7 +95,7 @@ def create_snapshot(disk_name,cycle_name,gc_zone):
     write_log('Creating '+cycle_name+' snapshot for disk "'+disk_name+'" ...')
     snapshot_name = disk_name + '-' + cycle_name + '-' + time.strftime('%Y%m%d-%H%M')
   try:
-    result = gcloud('compute', 'disks', 'snapshot', disk_name, '--snapshot-names', snapshot_name, '--zone', gc_zone)
+    result = gcloud('compute', 'disks', 'snapshot', disk_name, '--async', '--snapshot-names', snapshot_name, '--zone', gc_zone)
     write_log('Snapshot created: ' + snapshot_name)
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
