@@ -20,6 +20,7 @@ import time
 import syslog
 import argparse
 import subprocess
+from distutils.version import LooseVersion
 
 # GLOBAL VARIABLES
 
@@ -33,6 +34,7 @@ script_path = os.path.dirname(script)
 disk_name=''
 gce_zone=''
 historic_snapshots=30
+snapshot_label='default'
 status_dir='/var/run/emind/gce-ds'
 status_filename=''
 last_error='Successful execution.'
@@ -43,6 +45,11 @@ gcloud = sh.Command('gcloud', ['/usr/bin','/usr/local/bin'])
 # CONSTANTS
 RESULT_OK = 0
 RESULT_ERR = 1
+
+def can_add_label():
+    versions = gcloud('--version').split('\n')
+    version = filter(lambda x: 'Google Cloud SDK' in x, versions)[0].split(' ')[-1]
+    return LooseVersion('160.0.0') <= LooseVersion(version)
 
 def set_last_error(error_msg):
   global last_error
@@ -59,7 +66,10 @@ def cleanup_old_snapshots(snap_name):
   # gcloud compute snapshots list -r ^prod-1-media-content-1a.* --uri
   write_log('Performing cleanup ...')
   try:
-    result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--uri')
+    if can_add_label():
+      result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--filter=labels.snaptype=' + snapshot_label, '--uri')
+    else:
+      result = gcloud('compute','snapshots', 'list', '-r', '^' + snap_name + '-[0-9]{6}.*', '--uri')
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
     write_log(last_error,syslog.LOG_ERR)
@@ -87,6 +97,8 @@ def create_snapshot(disk_name,gc_zone):
   snapshot_name = disk_name + '-' + time.strftime('%Y%m%d-%H%M')
   try:
     result = gcloud('compute', 'disks', 'snapshot', disk_name, '--snapshot-names', snapshot_name, '--zone', gc_zone)
+    if can_add_label():
+      result = gcloud('compute', 'snapshots', 'add-labels', snapshot_name, '--labels=snaptype=' + snapshot_label)
     write_log('Snapshot created: ' + snapshot_name)
   except Exception as ex:
     set_last_error('GCloud execution error: %s' % ex.stderr)
@@ -125,6 +137,7 @@ parser = argparse.ArgumentParser(description='GCE Disk Snapshot Maker')
 parser.add_argument('-d', '--disk', help='Disk name', required=True)
 parser.add_argument('-z', '--zone', help='The GCE zone of the disk to be imaged', required=True)
 parser.add_argument('-H', '--history', help='Number of historic snapshots to keep', required=False, default=historic_snapshots, type=int)
+parser.add_argument('-l', '--label', help='Snapshot label', required=False, default=snapshot_label)
 parser.add_argument('-s', '--statdir', help='Directory where to write the status file', required=False, default=status_dir)
 
 args = vars(parser.parse_args())
@@ -134,6 +147,13 @@ gce_zone = args['zone']
 historic_snapshots = args['history']
 status_dir = args['statdir']
 status_filename = status_dir+'/'+disk_name+'.status'
+
+if args['label'] != snapshot_label:
+  if can_add_label():
+    snapshot_label = args['label']
+  else:
+    msg = "Cannot add snapshot label. Google Cloud SDK version must be >= 160.0.0."
+    sys.exit(msg)
 
 # Check status directory
 try:
